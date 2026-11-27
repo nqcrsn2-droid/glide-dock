@@ -31,8 +31,9 @@ mod win {
         ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, ABM_WINDOWPOSCHANGED, ABN_FULLSCREENAPP, ABN_POSCHANGED, APPBARDATA,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        RegisterWindowMessageW, SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE,
-        WM_ACTIVATE, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_WINDOWPOSCHANGED,
+        GetWindowLongPtrW, RegisterWindowMessageW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOPMOST,
+        SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WM_ACTIVATE, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_WINDOWPOSCHANGED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     struct State {
@@ -79,6 +80,11 @@ mod win {
             m.insert(hwnd_raw, State { geo, fullscreen: false });
         }
         unsafe {
+            // Clicking the dock must not take focus away from the app you're using. Taking focus also makes
+            // Windows pop up its own auto-hidden taskbar, because the shell reveals it when focus moves to a
+            // window without a taskbar button. Clicks still reach the dock; it just never becomes "active".
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize);
             let mut a = abd(hwnd);
             a.uCallbackMessage = msg;
             SHAppBarMessage(ABM_NEW, &mut a);
