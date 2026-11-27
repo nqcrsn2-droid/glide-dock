@@ -142,8 +142,9 @@
         el.className = "app";
         el.dataset.launch = it.pin.launch;
         el.innerHTML = `<span class="ph"></span><span class="dot"></span>`;
-        icon(it.pin.exe || it.pin.launch, 64).then((src) => { if (src) el.querySelector(".ph, img").outerHTML = `<img src="${src}" alt="">`; });
+        loadIcon(el, it);
       }
+      else if (!el.dataset.hasIcon && it.run && !el.dataset.retried) { el.dataset.retried = "1"; loadIcon(el, it); }
       el.dataset.i = i;
       el.draggable = it.pinned;
       const n = it.run ? it.run.windows.length : 0;
@@ -156,6 +157,15 @@
       box.appendChild(el);
     });
     void keys;
+  }
+
+  // Try the program file, then the app ID / shortcut, then the icon the app's window shows.
+  async function loadIcon(el, it) {
+    const tries = [...new Set([it.pin.exe, it.pin.launch, it.run && it.run.exe].filter(Boolean))];
+    let src = null;
+    for (const t of tries) { src = await icon(t, 64); if (src) break; }
+    if (!src && it.run && it.run.windows[0]) src = await invoke("window_icon", { hwnd: it.run.windows[0].hwnd }).catch(() => null);
+    if (src) { el.querySelector(".ph, img").outerHTML = `<img src="${src}" alt="">`; el.dataset.hasIcon = "1"; }
   }
 
   $("apps").addEventListener("click", (e) => {
