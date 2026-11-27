@@ -105,6 +105,9 @@ mod win {
         if GetAncestor(hwnd, GA_ROOT) != hwnd {
             return;
         }
+        if ev == EVENT_OBJECT_SHOW {
+            crate::taskbar::enforce(hwnd);
+        }
         if ev == EVENT_SYSTEM_FOREGROUND {
             let mut pid = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
