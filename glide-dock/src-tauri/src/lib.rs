@@ -158,6 +158,17 @@ async fn get_icon(target: String, size: Option<i32>) -> Option<String> {
     icons::icon(&target, size.unwrap_or(48).clamp(16, 256))
 }
 
+#[tauri::command]
+async fn window_icon(hwnd: i64) -> Option<String> {
+    #[cfg(windows)]
+    return apps::window_icon(windows::Win32::Foundation::HWND(hwnd as _));
+    #[allow(unreachable_code)]
+    {
+        let _ = hwnd;
+        None
+    }
+}
+
 static MENU_CTX: Mutex<Option<(Pin, Vec<i64>)>> = Mutex::new(None);
 
 /// Native right-click menu for a dock icon.
@@ -170,7 +181,7 @@ async fn app_menu(app: AppHandle, window: WebviewWindow, state: State<'_, AppSta
         .iter()
         .filter(|a| {
             let t = a.target.to_lowercase();
-            t == key_l || (!key_e.is_empty() && t == key_e)
+            t == key_l || (!key_e.is_empty() && (t == key_e || a.exe.to_lowercase() == key_e))
         })
         .flat_map(|a| a.windows.clone())
         .collect();
@@ -552,7 +563,7 @@ pub fn run() {
         .on_menu_event(|app, ev| on_menu(app, ev.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             get_settings, save_settings, open_settings, open_data_folder, app_info, quit,
-            apps_list, app_click, app_launch, get_icon, app_menu, bar_menu,
+            apps_list, app_click, app_launch, get_icon, window_icon, app_menu, bar_menu,
             audio_state, set_volume, set_mute, media_state, media_cmd, stats_enable,
             toggles_state, toggle, system_action, recycle_info,
             http_get, open_url, search_query, search_warm, all_apps, file_info, open_path,

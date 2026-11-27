@@ -17,6 +17,8 @@ pub struct AppWin {
 pub struct RunningApp {
     /// What launches it: an .exe path or "shell:AppsFolder\<AppID>" for Store apps.
     pub target: String,
+    /// the program file, even when `target` is an app ID (used to match pins made from shortcuts)
+    pub exe: String,
     pub name: String,
     pub windows: Vec<AppWin>,
     pub active: bool,
@@ -146,6 +148,7 @@ mod win {
 
     /// The windows a taskbar would show, grouped by app, in z-order (front first).
     pub fn list() -> Vec<RunningApp> {
+        crate::util::com();
         let mut hwnds: Vec<HWND> = Vec::new();
         unsafe extern "system" fn cb(h: HWND, lp: LPARAM) -> BOOL {
             let v = &mut *(lp.0 as *mut Vec<HWND>);
@@ -161,7 +164,7 @@ mod win {
             if !is_taskbar_window(h) {
                 continue;
             }
-            let Some(target) = target_of(h) else { continue };
+            let Some((target, exe)) = target_of(h) else { continue };
             let title = title_of(h);
             let minimized = unsafe { IsIconic(h).as_bool() };
             let w = AppWin { hwnd: h.0 as i64, title, minimized };
@@ -171,7 +174,7 @@ mod win {
                 a.windows.push(w);
                 a.active |= active;
             } else {
-                out.push(RunningApp { name: name_of(&target), target, windows: vec![w], active });
+                out.push(RunningApp { name: name_of(&target), target, exe, windows: vec![w], active });
             }
         }
         out
@@ -266,16 +269,32 @@ mod win {
         }
     }
 
-    fn target_of(h: HWND) -> Option<String> {
+    /// The app a window belongs to, the way the Windows taskbar groups it:
+    /// 1. the window's own app ID (Discord, Chrome, Spotify... set one, and it stays the same across updates),
+    /// 2. a Store app's package ID,
+    /// 3. otherwise the program file.
+    fn target_of(h: HWND) -> Option<(String, String)> {
         let mut pid = pid_of(h);
         let exe = exe_of(pid)?;
         if exe.to_lowercase().ends_with("\\applicationframehost.exe") {
             pid = real_pid(h, pid);
         }
-        if let Some(id) = aumid_of(pid) {
-            return Some(format!("shell:AppsFolder\\{}", id));
+        let exe = exe_of(pid).unwrap_or(exe);
+        if let Some(id) = window_app_id(h).or_else(|| aumid_of(pid)) {
+            return Some((format!("shell:AppsFolder\\{}", id), exe));
         }
-        exe_of(pid)
+        Some((exe.clone(), exe))
+    }
+
+    fn window_app_id(h: HWND) -> Option<String> {
+        use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
+        use windows::Win32::UI::Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow};
+        unsafe {
+            let store: IPropertyStore = SHGetPropertyStoreForWindow(h).ok()?;
+            let v = store.GetValue(&PKEY_AppUserModel_ID).ok()?.to_string();
+            let v = v.trim().to_string();
+            (!v.is_empty()).then_some(v)
+        }
     }
 
     /// Friendly name: the exe's "File description", the Store app's display name, or the file name.
@@ -294,7 +313,11 @@ mod win {
     }
 
     fn shell_display_name(target: &str) -> Option<String> {
-        crate::util::com();
+        let target = target.to_string();
+        crate::util::sta(move || shell_display_name_sta(&target))
+    }
+
+    fn shell_display_name_sta(target: &str) -> Option<String> {
         let w = wide(target);
         unsafe {
             let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(w.as_ptr()), None).ok()?;
@@ -333,11 +356,40 @@ mod win {
 
     // ---------- actions ----------
 
+    /// Open an app, file, folder, web page or "shell:AppsFolder\\<AppID>". Runs on its own shell-ready thread,
+    /// so a slow app start never holds up the dock.
     pub fn launch(target: &str) {
-        let verb = wide("open");
-        let file = wide(target);
+        let target = target.to_string();
+        std::thread::spawn(move || {
+            crate::util::sta(move || {
+                let verb = wide("open");
+                let file = wide(&target);
+                let r = unsafe { ShellExecuteW(None, PCWSTR(verb.as_ptr()), PCWSTR(file.as_ptr()), None, None, SW_SHOWNORMAL) };
+                if (r.0 as isize) <= 32 && target.starts_with("shell:") {
+                    // last resort: let Explorer open it, the way Start does
+                    let _ = std::process::Command::new("explorer.exe").arg(&target).spawn();
+                }
+            })
+        });
+    }
+
+    /// The icon a window shows in its title bar, for apps whose program file has no usable icon.
+    pub fn window_icon(h: HWND) -> Option<String> {
         unsafe {
-            ShellExecuteW(None, PCWSTR(verb.as_ptr()), PCWSTR(file.as_ptr()), None, None, SW_SHOWNORMAL);
+            let mut res = 0usize;
+            let ok = SendMessageTimeoutW(h, WM_GETICON, WPARAM(ICON_BIG as usize), LPARAM(0), SMTO_ABORTIFHUNG, 200, Some(&mut res));
+            let mut icon = if ok.0 != 0 { res } else { 0 };
+            if icon == 0 {
+                icon = GetClassLongPtrW(h, GCLP_HICON);
+            }
+            if icon == 0 {
+                let ok = SendMessageTimeoutW(h, WM_GETICON, WPARAM(ICON_SMALL2 as usize), LPARAM(0), SMTO_ABORTIFHUNG, 200, Some(&mut res));
+                icon = if ok.0 != 0 { res } else { 0 };
+            }
+            if icon == 0 {
+                return None;
+            }
+            crate::util::hicon_to_png(HICON(icon as _))
         }
     }
 

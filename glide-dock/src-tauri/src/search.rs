@@ -60,6 +60,9 @@ pub fn warm(file_search: bool) {
     };
     if need_apps {
         std::thread::spawn(|| {
+            #[cfg(windows)]
+            let items = crate::util::sta(list_apps);
+            #[cfg(not(windows))]
             let items = list_apps();
             let mut g = APPS.lock().unwrap();
             g.items = items;

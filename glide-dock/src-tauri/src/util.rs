@@ -40,6 +40,41 @@ pub fn com() {
     }
 }
 
+/// Run `f` on a fresh single-threaded-COM thread and wait for it. The Windows shell (launching
+/// "shell:AppsFolder" apps, app icons) expects this kind of thread; on others some calls quietly fail.
+#[cfg(windows)]
+pub fn sta<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
+    std::thread::spawn(move || unsafe {
+        let ok = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).is_ok();
+        let r = f();
+        if ok {
+            CoUninitialize();
+        }
+        r
+    })
+    .join()
+    .expect("sta thread")
+}
+
+/// HICON -> PNG data URL (the icon itself is not destroyed).
+#[cfg(windows)]
+pub fn hicon_to_png(icon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<String> {
+    use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
+    unsafe {
+        let mut ii = ICONINFO::default();
+        GetIconInfo(icon, &mut ii).ok()?;
+        if !ii.hbmMask.is_invalid() {
+            let _ = DeleteObject(ii.hbmMask.into());
+        }
+        if ii.hbmColor.is_invalid() {
+            return None;
+        }
+        hbitmap_to_png(ii.hbmColor)
+    }
+}
+
 /// HBITMAP (32-bit, usually premultiplied) -> PNG data URL. The bitmap is deleted.
 #[cfg(windows)]
 pub fn hbitmap_to_png(hbmp: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<String> {

@@ -32,14 +32,16 @@ fn image(target: &str, size: i32, icon_only: bool) -> Option<String> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::SIZE;
     use windows::Win32::UI::Shell::*;
-    crate::util::com();
-    let w = crate::util::wide(target);
-    unsafe {
-        let f: IShellItemImageFactory = SHCreateItemFromParsingName(PCWSTR(w.as_ptr()), None).ok()?;
-        let flags = if icon_only { SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK } else { SIIGBF_BIGGERSIZEOK };
-        let bmp = f.GetImage(SIZE { cx: size, cy: size }, flags).ok()?;
-        crate::util::hbitmap_to_png(bmp)
-    }
+    let target = target.to_string();
+    crate::util::sta(move || {
+        let w = crate::util::wide(&target);
+        unsafe {
+            let f: IShellItemImageFactory = SHCreateItemFromParsingName(PCWSTR(w.as_ptr()), None).ok()?;
+            let flags = if icon_only { SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK } else { SIIGBF_BIGGERSIZEOK };
+            let bmp = f.GetImage(SIZE { cx: size, cy: size }, flags).ok()?;
+            crate::util::hbitmap_to_png(bmp)
+        }
+    })
 }
 
 #[cfg(not(windows))]
