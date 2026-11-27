@@ -58,12 +58,18 @@ fn get_settings(state: State<AppState>) -> Settings {
     state.settings.lock().unwrap().clone()
 }
 
+// Commands that create windows or show menus must be async: on Windows a synchronous command runs inside the
+// web view's message handler, and creating a window there deadlocks the main thread (the whole dock freezes).
 #[tauri::command]
-fn save_settings(app: AppHandle, state: State<AppState>, mut settings: Settings) -> Res<Settings> {
+async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Res<Settings> {
+    save_settings_inner(&app, &state, settings)
+}
+
+fn save_settings_inner(app: &AppHandle, state: &AppState, mut settings: Settings) -> Res<Settings> {
     settings.clamp();
     settings.save(&state.dir).map_err(|e| e.to_string())?;
     let old = std::mem::replace(&mut *state.settings.lock().unwrap(), settings.clone());
-    apply(&app, &state.dir, &old, &settings);
+    apply(app, &state.dir, &old, &settings);
     Ok(settings)
 }
 
@@ -105,7 +111,7 @@ fn register_hotkey(app: &AppHandle, key: &str) {
 }
 
 #[tauri::command]
-fn open_settings(app: AppHandle, tab: Option<String>) {
+async fn open_settings(app: AppHandle, tab: Option<String>) {
     windows_mgr::open_settings(&app, tab.as_deref());
 }
 
@@ -156,7 +162,7 @@ static MENU_CTX: Mutex<Option<(Pin, Vec<i64>)>> = Mutex::new(None);
 
 /// Native right-click menu for a dock icon.
 #[tauri::command]
-fn app_menu(app: AppHandle, window: WebviewWindow, state: State<AppState>, pin: Pin) -> Res<()> {
+async fn app_menu(app: AppHandle, window: WebviewWindow, state: State<'_, AppState>, pin: Pin) -> Res<()> {
     let running = apps::list();
     let key_l = pin.launch.to_lowercase();
     let key_e = pin.exe.to_lowercase();
@@ -195,7 +201,7 @@ fn app_menu(app: AppHandle, window: WebviewWindow, state: State<AppState>, pin: 
 
 /// Right-click on empty bar space.
 #[tauri::command]
-fn bar_menu(app: AppHandle, window: WebviewWindow) -> Res<()> {
+async fn bar_menu(app: AppHandle, window: WebviewWindow) -> Res<()> {
     let e = |x: tauri::Error| x.to_string();
     let menu = Menu::with_items(
         &app,
@@ -225,7 +231,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         "bar:restore" => {
             let mut s = st.settings.lock().unwrap().clone();
             s.hide_windows_taskbar = false;
-            let _ = save_settings(app.clone(), st.clone(), s);
+            let _ = save_settings_inner(app, &st, s);
         }
         "bar:quit" => app.exit(0),
         _ if id.starts_with("app:") => {
@@ -243,7 +249,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                     if id == "app:pin" {
                         s.pinned.push(pin.clone());
                     }
-                    let _ = save_settings(app.clone(), st.clone(), s);
+                    let _ = save_settings_inner(app, &st, s);
                 }
                 "app:close" => {
                     #[cfg(windows)]
@@ -340,7 +346,7 @@ async fn toggle(app: AppHandle, state: State<'_, AppState>, id: String, on: bool
             "taskbar" => {
                 let mut s = state.settings.lock().unwrap().clone();
                 s.hide_windows_taskbar = on;
-                save_settings(app.clone(), state.clone(), s).is_ok()
+                save_settings_inner(&app, &state, s).is_ok()
             }
             other => {
                 if let Some(uri) = system::settings_uri(other) {
@@ -460,13 +466,13 @@ async fn open_path(path: String, reveal: Option<bool>) {
 // ---------------------------------------------------------------- popups, notes, timer
 
 #[tauri::command]
-fn show_popup(app: AppHandle, window: WebviewWindow, route: String, anchor: f64, width: f64, height: f64) {
+async fn show_popup(app: AppHandle, window: WebviewWindow, route: String, anchor: f64, width: f64, height: f64) {
     let (w, h) = (width.clamp(200.0, 900.0), height.clamp(120.0, 800.0));
     windows_mgr::show_popup(&app, &window, &route, anchor, w, h);
 }
 
 #[tauri::command]
-fn hide_popup(app: AppHandle) {
+async fn hide_popup(app: AppHandle) {
     windows_mgr::hide_popup(&app);
 }
 
