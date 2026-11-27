@@ -1,0 +1,32 @@
+/* Shared look for every Glide Dock page. Kept cheap: no backdrop-filter, no idle animations. */
+:root {
+  --bg: rgba(18, 18, 24, 0.82);
+  --panel: rgba(22, 22, 30, 0.96);
+  --line: rgba(255, 255, 255, 0.09);
+  --fg: #f2f2f5;
+  --dim: rgba(242, 242, 245, 0.55);
+  --pill: rgba(255, 255, 255, 0.07);
+  --pill-h: rgba(255, 255, 255, 0.13);
+  --accent: #ff4d6d;
+  --warn: #ffb020;
+  --r: 22px;
+}
+:root.light {
+  --bg: rgba(246, 246, 250, 0.84);
+  --panel: rgba(250, 250, 253, 0.97);
+  --line: rgba(0, 0, 0, 0.09);
+  --fg: #16161c;
+  --dim: rgba(22, 22, 28, 0.55);
+  --pill: rgba(0, 0, 0, 0.05);
+  --pill-h: rgba(0, 0, 0, 0.1);
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { background: transparent; color: var(--fg); font: 13px/1.25 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, select, textarea { font: inherit; color: var(--fg); }
+.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dim { color: var(--dim); }
+.mono { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+[hidden] { display: none !important; }

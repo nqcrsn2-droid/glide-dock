@@ -1,0 +1,15 @@
+{
+  "name": "glide-dock",
+  "private": true,
+  "version": "0.6.0",
+  "description": "Glide Dock - a lightweight smart taskbar and widget dock for Windows",
+  "license": "MIT",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.6"
+  }
+}
