@@ -13,7 +13,11 @@ public static class AB {
 function Tree($id) {
   $all = Get-CimInstance Win32_Process
   $ids = @($id); $i = 0
-  while ($i -lt $ids.Count) { $ids += ($all | Where-Object { $_.ParentProcessId -eq $ids[$i] }).ProcessId; $i++ }
+  while ($i -lt $ids.Count -and $i -lt 200) {
+    $kids = @($all | Where-Object { $_.ParentProcessId -eq $ids[$i] -and $_.ProcessId -ne $ids[$i] } | ForEach-Object { $_.ProcessId })
+    if ($kids.Count) { $ids += $kids }
+    $i++
+  }
   Get-Process -Id $ids -ErrorAction SilentlyContinue
 }
 $before = [AB]::State()
