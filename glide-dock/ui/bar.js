@@ -105,15 +105,26 @@
 
   // ------------------------------------------------------------------ apps (pinned + running)
   const lc = (s) => (s || "").toLowerCase();
+  // A running app belongs to a pin if it has the same app ID or program. Apps that update themselves into a new
+  // folder each version (Discord, Slack, Teams...) are matched on the program's file name too.
+  const base = (p) => lc(p).split("\\").pop();
+  const GENERIC = new Set(["update.exe", "applicationframehost.exe", "javaw.exe", "java.exe", "python.exe", "pythonw.exe", "electron.exe", "msedgewebview2.exe", "cmd.exe", "powershell.exe"]);
+  function sameApp(a, p) {
+    if (lc(a.target) === lc(p.launch)) return true;
+    if (!p.exe) return false;
+    if (lc(a.target) === lc(p.exe) || lc(a.exe) === lc(p.exe)) return true;
+    const b = base(p.exe);
+    return b.endsWith(".exe") && !GENERIC.has(b) && b === base(a.exe);
+  }
   function items() {
     const pins = ctx.s.pinned || [];
     const used = new Set();
     const out = pins.map((p) => {
-      const r = ctx.apps.find((a) => lc(a.target) === lc(p.launch) || (p.exe && lc(a.target) === lc(p.exe)));
+      const r = ctx.apps.find((a) => !used.has(a) && sameApp(a, p));
       if (r) used.add(r);
       return { pin: p, run: r || null, pinned: true };
     });
-    for (const a of ctx.apps) if (!used.has(a)) out.push({ pin: { name: a.name, launch: a.target, exe: a.target.startsWith("shell:") ? "" : a.target }, run: a, pinned: false });
+    for (const a of ctx.apps) if (!used.has(a)) out.push({ pin: { name: a.name, launch: a.target, exe: a.exe || "" }, run: a, pinned: false });
     return out;
   }
 
